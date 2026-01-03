@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alchemist Lab</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="game-container" style="display: none;">
+        
+        <!-- LEVÝ SLOUPEC: Inventář / Police -->
+        <div class="shelf-panel">
+            <div class="shelf-header">Suroviny</div>
+            <div id="inventory-list" class="inventory-grid">
+                <!-- Zde se vygenerují ampulky -->
+            </div>
+        </div>
+
+        <!-- PRAVÝ PANEL: Pracovní plocha -->
+        <div class="workspace-panel">
+            <div class="header">
+                <h1>Alchymie</h1>
+                <div class="close-icon" onclick="closeGame()">×</div>
+            </div>
+
+            <div class="main-content">
+                <!-- Info a Analýza -->
+                <div class="info-area">
+                    <div class="stats-box">
+                        <div class="stat-row">Objem: <span id="current-amt">0</span> ml</div>
+                        <div class="stat-row">pH: <span id="current-ph">7.0</span></div>
+                    </div>
+
+                    <div class="analysis-box">
+                        <div id="prediction-result" class="prediction-unknown">Prázdno</div>
+                        <small>Skill: <span id="player-skill">0</span></small>
+                    </div>
+
+                    <div class="actions">
+                        <button class="btn-reset" onclick="resetMix()">Vylít</button>
+                        <button class="btn-finish" onclick="finishGame()">Hotovo</button>
+                    </div>
+                </div>
+
+                <!-- Kádinka -->
+                <div class="beaker-area">
+                    <div class="beaker-wrapper">
+                        <div class="beaker">
+                            <div class="measurements"><span>-</span><span>-</span><span>-</span></div>
+                            <div id="liquid" class="liquid"></div>
+                            <div class="glass-shine"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

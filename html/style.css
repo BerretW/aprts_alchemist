@@ -1,0 +1,174 @@
+@import url('https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&display=swap');
+
+body {
+    margin: 0;
+    user-select: none;
+    font-family: 'Courier Prime', monospace;
+    overflow: hidden;
+    background: transparent;
+}
+
+#game-container {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 900px; height: 600px;
+    background-color: #f0e6d2;
+    background-image: url('paper.jpg');
+    border: 5px solid #3e2723;
+    border-radius: 8px;
+    box-shadow: 0 15px 40px rgba(0,0,0,0.9);
+    display: flex;
+    color: #2b1b17;
+}
+
+/* --- LEVÝ PANEL (POLICE) --- */
+.shelf-panel {
+    width: 280px;
+    background: rgba(62, 39, 35, 0.9); /* Tmavě hnědá */
+    border-right: 4px solid #2b1b17;
+    display: flex;
+    flex-direction: column;
+    padding: 10px;
+    overflow: hidden;
+}
+
+.shelf-header {
+    color: #d7ccc8;
+    text-align: center;
+    font-size: 1.2rem;
+    border-bottom: 2px solid #8d6e63;
+    padding-bottom: 10px;
+    margin-bottom: 10px;
+    font-weight: bold;
+}
+
+.inventory-grid {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-right: 5px;
+}
+
+/* Scrollbar pro inventář */
+.inventory-grid::-webkit-scrollbar { width: 6px; }
+.inventory-grid::-webkit-scrollbar-thumb { background: #8d6e63; border-radius: 3px; }
+
+/* ITEM KARTA */
+.inv-item {
+    display: flex;
+    align-items: center;
+    background: #5d4037;
+    color: #efebe9;
+    padding: 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    border: 1px solid #3e2723;
+    transition: all 0.2s;
+}
+.inv-item:hover { background: #6d4c41; transform: translateX(5px); }
+.inv-item:active { transform: scale(0.98); }
+.inv-item.disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
+
+/* IKONY LAHVIČEK (CSS SHAPES) */
+.icon-container {
+    width: 40px; height: 40px;
+    margin-right: 10px;
+    display: flex;
+    justify-content: center;
+    align-items: flex-end;
+    position: relative;
+}
+
+/* Společný styl pro tekutinu uvnitř ikony */
+.icon-liquid {
+    width: 100%; height: 100%;
+    background: #fff; /* Přepíše se inline stylem */
+    opacity: 0.8;
+    box-shadow: inset 0 0 5px rgba(0,0,0,0.5);
+}
+
+/* Tvary */
+.shape-vial .icon-liquid {
+    width: 14px; height: 35px;
+    border-radius: 0 0 7px 7px;
+    border: 1px solid rgba(255,255,255,0.3);
+}
+
+.shape-flask .icon-liquid {
+    width: 26px; height: 26px;
+    border-radius: 50% 50% 5px 5px;
+    clip-path: polygon(20% 0%, 80% 0%, 100% 100%, 0% 100%);
+}
+
+.shape-jar .icon-liquid {
+    width: 24px; height: 30px;
+    border-radius: 4px;
+}
+
+.item-info { flex: 1; }
+.item-name { font-weight: bold; font-size: 0.9rem; }
+.item-details { font-size: 0.75rem; color: #d7ccc8; }
+
+/* --- PRAVÝ PANEL (PRACOVNÍ PLOCHA) --- */
+.workspace-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.header {
+    display: flex; justify-content: space-between; padding: 15px 25px;
+    background: rgba(0,0,0,0.05); border-bottom: 2px solid #8d6e63;
+}
+.header h1 { margin: 0; font-size: 1.8rem; }
+.close-icon { font-size: 2rem; cursor: pointer; line-height: 1rem; }
+
+.main-content {
+    flex: 1; display: flex; padding: 20px; gap: 20px;
+}
+
+.info-area { flex: 1; display: flex; flex-direction: column; gap: 20px; }
+.beaker-area { flex: 1; display: flex; justify-content: center; align-items: center; }
+
+/* STATY */
+.stats-box, .analysis-box {
+    background: rgba(255,255,255,0.4); border: 1px solid #a1887f;
+    padding: 15px; border-radius: 5px; box-shadow: 2px 2px 5px rgba(0,0,0,0.1);
+}
+.stat-row { display: flex; justify-content: space-between; font-size: 1.2rem; font-weight: bold; }
+
+/* PREDICITION STYLES */
+#prediction-result { font-size: 1.3rem; font-weight: bold; padding: 5px; margin-bottom: 5px; }
+.prediction-unknown { color: #5d4037; opacity: 0.6; font-style: italic; }
+.prediction-known { color: #2e7d32; text-shadow: 0 0 2px #fff; }
+.prediction-trash { color: #c62828; }
+
+/* BEAKER (Větší verze) */
+.beaker-wrapper { width: 140px; height: 220px; }
+.beaker {
+    width: 100%; height: 100%;
+    border: 4px solid #555; border-top: none;
+    border-radius: 0 0 15px 15px; position: relative;
+    background: rgba(255,255,255,0.1); overflow: hidden;
+}
+.liquid {
+    position: absolute; bottom: 0; left: 0; width: 100%; height: 0%;
+    background: rgba(100,100,255,0.5); transition: all 0.5s ease-out;
+}
+.glass-shine {
+    position: absolute; top: 0; right: 20px; width: 15px; height: 90%;
+    background: linear-gradient(to bottom, rgba(255,255,255,0.3), transparent);
+}
+.measurements {
+    position: absolute; left: 5px; height: 100%; display: flex;
+    flex-direction: column; justify-content: space-evenly; font-weight: bold; color: rgba(0,0,0,0.5); z-index: 5;
+}
+
+/* BUTTONS */
+.actions { margin-top: auto; display: flex; gap: 10px; }
+.actions button { flex: 1; padding: 15px; font-weight: bold; border: none; cursor: pointer; color: white; border-radius: 4px; text-transform: uppercase; }
+.btn-reset { background: #795548; } .btn-reset:hover { background: #8d6e63; }
+.btn-finish { background: #2e7d32; } .btn-finish:hover { background: #388e3c; }
