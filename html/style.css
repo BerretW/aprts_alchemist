@@ -74,39 +74,43 @@ body {
 
 /* IKONY LAHVIČEK (CSS SHAPES) */
 .icon-container {
-    width: 40px; height: 40px;
-    margin-right: 10px;
+    width: 45px; height: 45px;
+    margin-right: 12px;
+    position: relative;
     display: flex;
     justify-content: center;
-    align-items: flex-end;
-    position: relative;
+    align-items: center;
+    border-radius: 5px;
+    background: rgba(0, 0, 0, 0.2); /* Jemné tmavé pozadí pod itemem */
+    border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-/* Společný styl pro tekutinu uvnitř ikony */
-.icon-liquid {
+/* Barevná záře za itemem (reprezentuje barvu chemikálie) */
+.icon-glow {
+    position: absolute;
+    top: 0; left: 0;
     width: 100%; height: 100%;
-    background: #fff; /* Přepíše se inline stylem */
-    opacity: 0.8;
-    box-shadow: inset 0 0 5px rgba(0,0,0,0.5);
-}
-
-/* Tvary */
-.shape-vial .icon-liquid {
-    width: 14px; height: 35px;
-    border-radius: 0 0 7px 7px;
-    border: 1px solid rgba(255,255,255,0.3);
-}
-
-.shape-flask .icon-liquid {
-    width: 26px; height: 26px;
-    border-radius: 50% 50% 5px 5px;
-    clip-path: polygon(20% 0%, 80% 0%, 100% 100%, 0% 100%);
-}
-
-.shape-jar .icon-liquid {
-    width: 24px; height: 30px;
     border-radius: 4px;
+    z-index: 1;
 }
+
+/* Obrázek z inventáře */
+.inv-img {
+    width: 85%;
+    height: 85%;
+    object-fit: contain;
+    position: relative;
+    z-index: 2; /* Musí být nad září */
+    filter: drop-shadow(0px 2px 2px rgba(0,0,0,0.5)); /* Stín aby item nesplýval */
+}
+
+/* Odstraníme staré tvary, už nejsou potřeba */
+.shape-vial .icon-liquid, 
+.shape-flask .icon-liquid, 
+.shape-jar .icon-liquid {
+    display: none;
+}
+
 
 .item-info { flex: 1; }
 .item-name { font-weight: bold; font-size: 0.9rem; }
@@ -172,3 +176,143 @@ body {
 .actions button { flex: 1; padding: 15px; font-weight: bold; border: none; cursor: pointer; color: white; border-radius: 4px; text-transform: uppercase; }
 .btn-reset { background: #795548; } .btn-reset:hover { background: #8d6e63; }
 .btn-finish { background: #2e7d32; } .btn-finish:hover { background: #388e3c; }
+
+
+/* --- OVERLAY PROGRESS BAR --- */
+#action-overlay {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.6); z-index: 100;
+    display: flex; flex-direction: column;
+    justify-content: center; align-items: center;
+    color: white; font-size: 1.5rem;
+}
+.hidden { display: none !important; }
+
+.progress-bar-bg {
+    width: 300px; height: 20px; background: #3e2723;
+    border: 2px solid #8d6e63; margin-top: 15px; border-radius: 10px; overflow: hidden;
+}
+.progress-bar-fill {
+    height: 100%; width: 0%; background: #66bb6a;
+    transition: width 0.1s linear;
+}
+
+/* --- CENTER AREA (Beaker + Heater) --- */
+.center-area {
+    flex: 1; display: flex; flex-direction: column; align-items: center; gap: 20px;
+}
+
+/* --- HEATER PANEL --- */
+.heater-panel {
+    background: #4e342e; border: 2px solid #2b1b17;
+    padding: 15px; border-radius: 8px; width: 300px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+    color: #d7ccc8;
+}
+.heater-display { margin-bottom: 10px; display: flex; flex-direction: column; gap: 10px; }
+.temp-row, .time-row { display: flex; align-items: center; justify-content: space-between; font-weight: bold;}
+input[type=range] { flex: 1; margin: 0 10px; cursor: pointer; }
+.digital-time { font-family: 'Courier New', monospace; font-size: 1.4rem; color: #ffcc80; background: #2b1b17; padding: 2px 8px; border-radius: 4px; }
+
+.btn-burner {
+    width: 100%; padding: 10px; font-weight: bold; border: none; border-radius: 4px;
+    background: #424242; color: #9e9e9e; cursor: pointer; transition: all 0.3s;
+}
+.btn-burner.active {
+    background: #d32f2f; color: white;
+    box-shadow: 0 0 15px #f44336;
+    animation: pulseBurner 1s infinite;
+}
+@keyframes pulseBurner { 0% { box-shadow: 0 0 10px #f44336; } 50% { box-shadow: 0 0 20px #ff5722; } 100% { box-shadow: 0 0 10px #f44336; } }
+
+/* --- BUBBLES ANIMATION --- */
+.bubbles {
+    width: 100%; height: 100%; position: absolute; bottom: 0; left: 0;
+    background-image: 
+        radial-gradient(rgba(255,255,255,0.3) 20%, transparent 20%),
+        radial-gradient(rgba(255,255,255,0.3) 20%, transparent 20%);
+    background-size: 10px 10px;
+    background-position: 0 0, 5px 5px;
+    animation: bubbleAnim 2s linear infinite; opacity: 0.5;
+}
+@keyframes bubbleAnim { 0% { transform: translateY(0); } 100% { transform: translateY(-20px); } }
+
+/* Úprava Workspace layoutu, aby se tam vše vešlo */
+.main-content { padding: 10px; gap: 10px; }
+.beaker-wrapper { height: 200px; width: 130px; } /* Trochu menší kádinka aby se vešel vařič */
+
+/* --- ANIMACE NALÉVÁNÍ (POURING) --- */
+.pouring-scene {
+    position: absolute;
+    
+    /* ZVEDNOUT: Původně bylo 28%, dáme 18%, aby byla lahev nad kádinkou */
+    top: 18%; 
+    
+    /* POSUNOUT DOLEVA: Původně 64%, dáme 59%, aby proud mířil na střed */
+    left: 59%; 
+    
+    width: 200px;
+    height: 300px;
+    pointer-events: none;
+    z-index: 50;
+    overflow: visible;
+}
+
+.pouring-scene.hidden {
+    display: none;
+}
+
+/* Lahvička */
+.pouring-bottle {
+    width: 80px;
+    height: auto;
+    position: absolute;
+    top: 0;
+    right: 20px;
+    
+    /* Výchozí stav: rovně */
+    transform: rotate(0deg);
+    /* Bod otáčení: pravý dolní roh (aby se nakláněla nad kádinku) */
+    transform-origin: bottom right; 
+    
+    transition: transform 0.6s cubic-bezier(0.25, 1, 0.5, 1);
+    filter: drop-shadow(5px 5px 5px rgba(0,0,0,0.5));
+}
+
+/* Třída pro naklonění */
+.pouring-bottle.tilted {
+    /* Naklonění doleva */
+    transform: rotate(-100deg) translate(-10px, 20px); 
+}
+
+/* Proud tekutiny */
+.liquid-stream {
+    position: absolute;
+    top: 60px;  /* Začíná u hrdla nakloněné lahve */
+    left: 40px; /* Musí lícovat s hrdlem */
+    width: 8px;
+    height: 0;  /* Na začátku není vidět */
+    background: white; /* Barva se nastaví dynamicky v JS */
+    opacity: 0;
+    border-radius: 4px;
+    box-shadow: 0 0 5px rgba(255,255,255,0.2);
+    
+    /* Animace růstu proudu */
+    transition: height 0.2s ease-in, opacity 0.1s;
+}
+
+/* Třída, když teče */
+.liquid-stream.flowing {
+    height: 250px; /* Dosáhne až do kádinky */
+    opacity: 0.85;
+}
+
+/* Jemná animace "třepání" proudu pro realismus */
+@keyframes streamWiggle {
+    0% { transform: translateX(0); }
+    50% { transform: translateX(1px); }
+    100% { transform: translateX(0); }
+}
+.liquid-stream.flowing {
+    animation: streamWiggle 0.1s infinite;
+}

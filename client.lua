@@ -1,67 +1,67 @@
 RegisterCommand('startchem', function()
     local playerSkill = Config.GetPlayerSkill()
     print("Otevírám alchymistickou minihru. Skill level: " .. playerSkill)
-    -- 1. Získání inventáře z VORP
-    -- POZOR: Ujisti se, že máš nejnovější vorp_inventory, kde tento export funguje na klientovi.
-    -- Pokud ne, musíš si vyžádat data ze serveru přes callback.
+    
+    -- 1. Získání inventáře (VORP)
+    -- Ujisti se, že export funguje, jinak použij TriggerServerEvent callback
     local inventory = exports.vorp_inventory:getInventoryItems()
     
     if not inventory then 
-        print("Chyba: Nepodařilo se načíst inventář.") 
-        return 
+        print("Chyba: Nepodařilo se načíst inventář nebo je prázdný.") 
+        -- Pro testování bez itemů můžeš odkomentovat return, 
+        -- ale v produkci musíš mít itemy.
+        -- return 
+        inventory = {} -- Fallback aby script nespadl
     end
 
     -- 2. Filtrace a příprava dat pro UI
     local validIngredients = {}
 
     for _, item in pairs(inventory) do
-        -- 'item.name' je technický název (např. 'product_hemp')
         local configData = Config.Ingredients[item.name]
-
         if configData then
-            -- Pokud je item definován v configu jako chemikálie, přidáme ho
             table.insert(validIngredients, {
-                id = item.name,           -- ID pro logiku
-                label = item.label,       -- Název z inventáře (např. "Konopí")
-                count = item.count,       -- Počet kusů v inventáři
+                id = item.name,
+                label = item.label,
+                count = item.count,
                 
-                -- Chemické vlastnosti z configu
+                -- Vlastnosti
                 type = configData.type,
-                r = configData.r, 
-                g = configData.g, 
-                b = configData.b,
+                r = configData.r, g = configData.g, b = configData.b,
                 ph = configData.ph,
                 amount = configData.amount
             })
         end
     end
 
-    -- 3. Příprava receptů (skryjeme citlivá data)
+    -- 3. Příprava receptů
     local recipesForUI = {}
     for k, v in pairs(Config.Recipes) do
         table.insert(recipesForUI, {
-            id = k,
+            id = k, -- ID receptu
             label = v.label,
             minSkill = v.minSkillToIdentify,
             conditions = v.conditions,
-            requirements = v.requirements
+            requirements = v.requirements,
+            process = v.process
         })
     end
 
     -- 4. Otevření UI
-    SetNuiFocus(true, true)
+SetNuiFocus(true, true)
     SendNUIMessage({
         type = "OPEN_GAME",
-        inputs = validIngredients, -- Posíláme jen to, co má hráč u sebe!
+        inputs = validIngredients,
         recipes = recipesForUI,
-        playerSkill = playerSkill
+        playerSkill = playerSkill,
+        imgDir = "nui://vorp_inventory/html/img/items/" 
     })
 end)
 
--- Callbacky zůstávají stejné
 RegisterNUICallback('finish', function(data, cb)
     SetNuiFocus(false, false)
-    TriggerServerEvent('aprts_alchemist:checkMix', data)
+    -- data obsahuje: { beakerIngredients, totalConsumed }
+    TriggerServerEvent('aprts_alchemist:finishCraft', data)
     cb('ok')
 end)
 

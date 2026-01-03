@@ -1,16 +1,42 @@
-let currentMix = { r: 0, g: 0, b: 0, ph: 7.0, amount: 0 };
-let ingredientsUsed = {}; // Co posíláme serveru
-let inventoryItems = [];  // Lokální stav inventáře v UI
+// ============================================================
+// FILE: html/script.js
+// ============================================================
+
+// --- HLAVNÍ PROMĚNNÉ ---
+let currentMix = { r: 255, g: 255, b: 255, ph: 7.0, amount: 0 };
+
+// Sledování surovin
+let ingredientsInBeaker = {};   // Co je v kádince (pro recept)
+let ingredientsTotalUsed = {};  // Co se odečte z inventáře (včetně vylitých pokusů)
+
+// Data z klienta
+let inventoryItems = [];
 let availableRecipes = [];
 let playerSkill = 0;
+let imgBaseUrl = "nui://vorp_inventory/html/img/items/"; // Defaultní cesta
+
+// Stav procesu (Hardcore mechaniky)
+let isBusy = false;          // Blokuje interakce během animací
+let isBurnerOn = false;      // Stav hořáku
+let targetTemp = 0;          // Nastavená teplota
+let currentBoilTime = 0;     // Doba varu v sekundách
+let boilInterval = null;     // Timer pro var
 
 const MAX_BEAKER_VOLUME = 250;
+
+// ============================================================
+// 1. INICIALIZACE A EVENTY
+// ============================================================
 
 window.addEventListener('message', function(event) {
     if (event.data.type === "OPEN_GAME") {
         inventoryItems = event.data.inputs || [];
         availableRecipes = event.data.recipes || [];
         playerSkill = event.data.playerSkill || 0;
+        
+        if (event.data.imgDir) {
+            imgBaseUrl = event.data.imgDir;
+        }
 
         document.getElementById('player-skill').innerText = playerSkill;
 
@@ -20,20 +46,38 @@ window.addEventListener('message', function(event) {
 });
 
 document.addEventListener('keydown', function(event) {
-    if (event.key === "Escape") closeGame();
+    // Zavření ESCapem, ale jen pokud neprobíhá animace
+    if (event.key === "Escape" && !isBusy) closeGame();
 });
 
 function setupGame() {
+    // Reset směsi
     currentMix = { r: 255, g: 255, b: 255, ph: 7.0, amount: 0 };
-    ingredientsUsed = {};
+    ingredientsInBeaker = {};
+    ingredientsTotalUsed = {};
     
-    // Reset počítadla použití
+    // Reset procesu
+    isBusy = false;
+    isBurnerOn = false;
+    targetTemp = 0;
+    currentBoilTime = 0;
+    if (boilInterval) clearInterval(boilInterval);
+
+    // Reset UI prvků
+    document.getElementById('temp-slider').value = 0;
+    document.getElementById('temp-val').innerText = "0";
+    document.getElementById('boil-time').innerText = "00:00";
+    
+    const btnBurner = document.getElementById('btn-burner');
+    btnBurner.classList.remove('active');
+    btnBurner.innerText = "ZAPÁLIT HOŘÁK";
+    
+    document.getElementById('bubbles').classList.add('hidden');
+    document.getElementById('action-overlay').classList.add('hidden');
+
+    // Inicializace inventáře
     inventoryItems.forEach(item => {
-        ingredientsUsed[item.id] = 0;
-        // Přidáme pomocnou vlastnost pro aktuální zobrazený počet (aby se neresetoval inventář při resetu kádinky, jen při zavření)
-        if (item.currentCount === undefined) {
-             item.currentCount = item.count;
-        }
+        item.currentCount = item.count; 
     });
 
     renderInventory();
@@ -41,34 +85,49 @@ function setupGame() {
     identifyMixture();
 }
 
+// ============================================================
+// 2. RENDEROVÁNÍ INVENTÁŘE (S IKONAMI)
+// ============================================================
+
 function renderInventory() {
     const container = document.getElementById('inventory-list');
     container.innerHTML = '';
     
     inventoryItems.forEach((item, index) => {
         const div = document.createElement('div');
-        // Pokud dojdou kusy, znepřístupníme tlačítko
-        const isDisabled = item.currentCount <= 0 ? 'disabled' : '';
         
-        div.className = `inv-item ${isDisabled}`;
+        // Zamezení klikání pokud item došel, nebo pokud "pracujeme" (isBusy / isBurnerOn)
+        // (Bezpečnostní prvek: nelze přilévat do vařící směsi, může vybuchnout - zjednodušeno na zákaz)
+        const isLocked = item.currentCount <= 0 || isBusy || isBurnerOn;
+        const disabledClass = isLocked ? 'disabled' : '';
         
-        // Určení CSS třídy pro tvar (fallback na jar)
-        const shapeClass = item.type ? `shape-${item.type}` : 'shape-jar';
+        div.className = `inv-item ${disabledClass}`;
+        
+        const imgPath = `${imgBaseUrl}${item.id}.png`;
         
         div.innerHTML = `
-            <div class="icon-container ${shapeClass}">
-                <div class="icon-liquid" style="background: rgb(${item.r},${item.g},${item.b});"></div>
+            <div class="icon-container">
+                <!-- Glow efekt podle barvy chemikálie -->
+                <div class="icon-glow" style="
+                    background: radial-gradient(circle, rgba(${item.r},${item.g},${item.b}, 0.6) 0%, rgba(0,0,0,0) 70%);
+                    box-shadow: inset 0 0 10px rgba(${item.r},${item.g},${item.b}, 0.3);
+                "></div>
+                <img src="${imgPath}" class="inv-img" onerror="this.style.display='none'" alt="${item.label}">
             </div>
+            
             <div class="item-info">
                 <div class="item-name">${item.label}</div>
                 <div class="item-details">
-                    Množství: <span id="count-${index}">${item.currentCount}</span> ks<br>
-                    <small>+${item.amount}ml | pH ${item.ph}</small>
+                    Skladem: <span id="count-${index}">${item.currentCount}</span><br>
+                    <small style="color: #d7ccc8;">
+                        <span style="color: rgb(${item.r},${item.g},${item.b});">●</span> 
+                        pH ${item.ph} (+${item.amount}ml)
+                    </small>
                 </div>
             </div>
         `;
         
-        if (!isDisabled) {
+        if (!isLocked) {
             div.onclick = () => addToMix(index);
         }
         
@@ -76,24 +135,90 @@ function renderInventory() {
     });
 }
 
+// ============================================================
+// 3. LOGIKA NALÉVÁNÍ (PROGRESS BAR)
+// ============================================================
+
+// Upravená funkce addToMix pro animaci lahvičky
 function addToMix(index) {
+    if (isBusy || isBurnerOn) return; 
+
+    const item = inventoryItems[index];
+    if (item.currentCount <= 0) return;
+    if (currentMix.amount + item.amount > MAX_BEAKER_VOLUME) return;
+
+    // 1. ZAMKNOUT UI
+    isBusy = true;
+    renderInventory(); // Itemmy zešednou
+
+    // 2. PŘÍPRAVA SCÉNY
+    const scene = document.getElementById('pouring-scene');
+    const bottleImg = document.getElementById('pouring-bottle-img');
+    const stream = document.getElementById('pouring-stream');
+
+    // Nastavíme obrázek podle toho, co držíme
+    bottleImg.src = `${imgBaseUrl}${item.id}.png`;
+    
+    // Nastavíme barvu proudu podle ingredience
+    stream.style.backgroundColor = `rgb(${item.r}, ${item.g}, ${item.b})`;
+    // Reset stylů (pro jistotu)
+    bottleImg.classList.remove('tilted');
+    stream.classList.remove('flowing');
+    
+    // Zobrazíme scénu
+    scene.classList.remove('hidden');
+
+    // === SEKVENCE ANIMACE ===
+    
+    // KROK A: Naklonění lahve (0ms)
+    // Dáme malý delay, aby se stihl načíst display:block
+    setTimeout(() => {
+        bottleImg.classList.add('tilted');
+    }, 50);
+
+    // KROK B: Spuštění proudu (po 400ms - až se lahev nakloní)
+    setTimeout(() => {
+        stream.classList.add('flowing');
+        
+        // Zvukový efekt by šel přidat zde: playPourSound();
+    }, 400);
+
+    // KROK C: Zastavení proudu (po 1500ms - doba lití)
+    setTimeout(() => {
+        stream.classList.remove('flowing');
+        
+        // ZDE PROVEDEME VÝPOČTY (v momentě kdy přestane téct)
+        finalizePouring(index);
+        
+    }, 1800);
+
+    // KROK D: Vrácení lahve zpět (po chvilce co doteče)
+    setTimeout(() => {
+        bottleImg.classList.remove('tilted');
+    }, 2000);
+
+    // KROK E: Skrytí scény a odemčení (až se lahev narovná)
+    setTimeout(() => {
+        scene.classList.add('hidden');
+        isBusy = false;
+        renderInventory(); // Odemknout itemy
+    }, 2600);
+}
+
+// Funkce finalizePouring zůstává stejná jako v předchozí verzi
+function finalizePouring(index) {
     const item = inventoryItems[index];
     
-    // Kontrola, zda máme item
-    if (item.currentCount <= 0) return;
-
-    // 1. Odečtení z lokálního inventáře
+    // 1. Odečet z UI
     item.currentCount--;
     document.getElementById(`count-${index}`).innerText = item.currentCount;
-    
-    // Pokud došly itemy, překreslíme, aby zešedl
-    if (item.currentCount === 0) {
-        renderInventory();
-    }
 
-    // 2. Záznam pro server
-    if (!ingredientsUsed[item.id]) ingredientsUsed[item.id] = 0;
-    ingredientsUsed[item.id] += 1; // Serveru posíláme počet POUŽITÝCH KUSŮ, ne ml (aby věděl kolik odebrat itemů)
+    // 2. Data pro server
+    if (!ingredientsInBeaker[item.id]) ingredientsInBeaker[item.id] = 0;
+    ingredientsInBeaker[item.id]++;
+
+    if (!ingredientsTotalUsed[item.id]) ingredientsTotalUsed[item.id] = 0;
+    ingredientsTotalUsed[item.id]++;
 
     // 3. Fyzika míchání
     if (currentMix.amount === 0) {
@@ -104,11 +229,9 @@ function addToMix(index) {
         currentMix.amount = item.amount;
     } else {
         const totalAmount = currentMix.amount + item.amount;
-        
         currentMix.r = ((currentMix.r * currentMix.amount) + (item.r * item.amount)) / totalAmount;
         currentMix.g = ((currentMix.g * currentMix.amount) + (item.g * item.amount)) / totalAmount;
         currentMix.b = ((currentMix.b * currentMix.amount) + (item.b * item.amount)) / totalAmount;
-        
         currentMix.ph = ((currentMix.ph * currentMix.amount) + (item.ph * item.amount)) / totalAmount;
         currentMix.amount = totalAmount;
     }
@@ -117,45 +240,77 @@ function addToMix(index) {
     identifyMixture();
 }
 
-function resetMix() {
-    // POZOR: Tlačítko "Vylít" nevrací itemy do inventáře! (Hardcore verze)
-    // Pokud chceš vracet itemy, musel bys tady iterovat ingredientsUsed a přičíst je zpět k item.currentCount.
-    
-    /* 
-    // Verze s vracením itemů (odkomentuj pokud chceš):
-    inventoryItems.forEach(item => {
-        if (ingredientsUsed[item.id]) {
-            item.currentCount += ingredientsUsed[item.id];
-        }
-    });
-    */
+// ============================================================
+// 4. LOGIKA VAŘENÍ (HOŘÁK A TEPLOTA)
+// ============================================================
 
-    currentMix = { r: 255, g: 255, b: 255, ph: 7.0, amount: 0 };
-    // Resetujeme tracking pro aktuální směs, ale itemy jsou už "pryč" (vylité do výlevky)
-    // Pokud použiješ verzi s vracením, resetuj ingredientsUsed na 0 tady.
-    // V této verzi ingredientsUsed necháme být? Ne, musíme resetovat counter pro NOVOU várku, 
-    // ale itemy v 'inventoryItems' už jsou odečtené.
-    // Abychom neposlali serveru, že má odečíst 2x tolik, musíme logiku serveru upravit, 
-    // nebo zde ingredientsUsed vynulovat a smířit se s tím, že itemy zmizely.
+// Voláno při posunu slideru
+function updateTempDisplay() {
+    targetTemp = parseInt(document.getElementById('temp-slider').value);
+    document.getElementById('temp-val').innerText = targetTemp;
     
-    // Správná logika pro "Vylití do kanálu": Itemy jsou pryč.
-    // Ale my ingredientsUsed musíme vynulovat, protože začínáme novou směs.
-    // A serveru pošleme finální ingredientsUsed až při kliknutí na "Hotovo".
-    // ALE: Co když naleju 5 věcí, vyleju to, a pak zavřu okno? Měly by se odečíst?
-    // Řešení: Server by měl odečíst itemy na základě toho, co se "spotřebovalo".
-    // V této jednoduché verzi: Reset smaže jen vizuál v kádince. 
-    // Ale ingredientsUsed se musí vyčistit, aby se nepřičítaly k nové směsi.
-    // ALE itemy v levém menu se nevrátí (už jsou "currentCount" nižší).
-    
-    ingredientsUsed = {}; // Začínáme novou směs, stará je v kanálu.
-    
-    updateVisuals();
+    // Pokud hoří, aktualizujeme vizuál bublinek hned
+    if (isBurnerOn) updateBubbles();
     identifyMixture();
-    renderInventory(); // Refresh tlačítek
 }
 
-// ... updateVisuals, identifyMixture, checkRecipeMatch, finishGame, closeGame ...
-// (Jsou stejné jako minule, jen finishGame posílá ingredientsUsed)
+function toggleBurner() {
+    if (isBusy) return; // Nemůžeme zapalovat, když naléváme
+
+    isBurnerOn = !isBurnerOn;
+    const btn = document.getElementById('btn-burner');
+    
+    if (isBurnerOn) {
+        // ZAPNUTÍ
+        btn.classList.add('active');
+        btn.innerText = "ZHASNOUT HOŘÁK";
+        renderInventory(); // Zamknout inventář
+
+        // Start Timeru
+        boilInterval = setInterval(() => {
+            // Čas běží, jen pokud je teplota > 20°C a je co vařit
+            if (currentMix.amount > 0 && targetTemp > 20) {
+                currentBoilTime++;
+                updateBoilTimeDisplay();
+                identifyMixture(); // Kontrola receptu v reálném čase
+            }
+        }, 1000);
+        
+        updateBubbles();
+
+    } else {
+        // VYPNUTÍ
+        btn.classList.remove('active');
+        btn.innerText = "ZAPÁLIT HOŘÁK";
+        
+        clearInterval(boilInterval);
+        document.getElementById('bubbles').classList.add('hidden');
+        renderInventory(); // Odemknout inventář
+    }
+}
+
+function updateBoilTimeDisplay() {
+    const minutes = Math.floor(currentBoilTime / 60);
+    const seconds = currentBoilTime % 60;
+    // Formát MM:SS
+    const str = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    document.getElementById('boil-time').innerText = str;
+}
+
+function updateBubbles() {
+    const bubbles = document.getElementById('bubbles');
+    // Bublinky se objeví, pokud je hořák zapnutý, je tam tekutina a teplota > 80
+    if (isBurnerOn && currentMix.amount > 0 && targetTemp > 80) {
+        bubbles.classList.remove('hidden');
+        // Rychlost animace by šla měnit podle teploty, ale stačí toggle
+    } else {
+        bubbles.classList.add('hidden');
+    }
+}
+
+// ============================================================
+// 5. VIZUALIZACE A RESET
+// ============================================================
 
 function updateVisuals() {
     document.getElementById('current-amt').innerText = Math.round(currentMix.amount);
@@ -169,8 +324,32 @@ function updateVisuals() {
     liquid.style.height = heightPerc + '%';
 }
 
+function resetMix() {
+    if (isBusy) return;
+    
+    // Bezpečnost: vypnout hořák
+    if (isBurnerOn) toggleBurner();
+
+    // Reset dat
+    currentMix = { r: 255, g: 255, b: 255, ph: 7.0, amount: 0 };
+    ingredientsInBeaker = {};
+    currentBoilTime = 0;
+
+    // Aktualizace UI
+    updateBoilTimeDisplay();
+    updateVisuals();
+    identifyMixture();
+    
+    // Poznámka: Itemmy se NEVRACÍ (ingredientsTotalUsed zůstává).
+}
+
+// ============================================================
+// 6. IDENTIFIKACE RECEPTU (VČETNĚ PROCESU)
+// ============================================================
+
 function identifyMixture() {
     const predBox = document.getElementById('prediction-result');
+    
     if (currentMix.amount <= 0) {
         predBox.innerText = "Prázdno";
         predBox.className = "prediction-unknown";
@@ -191,71 +370,90 @@ function identifyMixture() {
             predBox.innerText = foundRecipe.label;
             predBox.classList.add("prediction-known");
         } else {
-            predBox.innerText = "Stabilní směs (?)";
+            predBox.innerText = "Neznámá směs";
             predBox.classList.add("prediction-vague");
         }
     } else {
-        predBox.innerText = "Neznámý kal";
+        predBox.innerText = "Kal (Špatný postup)";
         predBox.classList.add("prediction-trash");
     }
 }
 
 function checkRecipeMatch(recipe) {
     const cond = recipe.conditions;
+    
+    // 1. Fyzikální vlastnosti (pH, Množství)
     if (currentMix.ph < cond.phMin || currentMix.ph > cond.phMax) return false;
     if (currentMix.amount < cond.minTotalAmount) return false;
     
-    // U requirements musíme počítat celkové množství v ML (počet itemů * množství za item)
-    // Protože ingredientsUsed v JS teď ukládá počty kusů (clicks), musíme to převést,
-    // nebo v JS ukládat i ml.
-    // Jednodušší: V configu recipe requirements definovat "minAmount" jako ML.
-    // V JS musíme zjistit kolik ml má jeden item. To musíme najít v 'inventoryItems'.
-    
+    // 2. Barva (Tolerance)
+    if (cond.colorTarget) {
+        const tol = cond.colorTolerance || 30;
+        if (Math.abs(currentMix.r - cond.colorTarget.r) > tol) return false;
+        if (Math.abs(currentMix.g - cond.colorTarget.g) > tol) return false;
+        if (Math.abs(currentMix.b - cond.colorTarget.b) > tol) return false;
+    }
+
+    // 3. Ingredience (Requirements)
     if (recipe.requirements) {
         for (let req of recipe.requirements) {
-            const usedCount = ingredientsUsed[req.item] || 0;
-            // Najdeme item v inputu abychom věděli kolik má ml
-            const itemInfo = inventoryItems.find(i => i.id === req.item);
-            if (!itemInfo) return false; // Nemáme item
+            const usedCount = ingredientsInBeaker[req.item] || 0;
+            const itemDef = inventoryItems.find(i => i.id === req.item);
+            if (!itemDef) return false; // Nemáme info o itemu
             
-            const totalMlUsed = usedCount * itemInfo.amount;
-            
-            if (totalMlUsed < req.minAmount) return false;
+            // Kontrola ml
+            if ((usedCount * itemDef.amount) < req.minAmount) return false;
         }
     }
+
+    // 4. PROCES (Teplota a Čas)
+    // Pokud recept vyžaduje specifický proces
+    if (recipe.process) {
+        const proc = recipe.process;
+        
+        // Kontrola Teploty
+        // targetTemp je to, co hráč nastavil na slideru
+        if (Math.abs(targetTemp - proc.temp) > (proc.tempTolerance || 15)) {
+            return false;
+        }
+
+        // Kontrola Času
+        // currentBoilTime je jak dlouho to hráč nechal bublat
+        if (Math.abs(currentBoilTime - proc.time) > (proc.timeTolerance || 5)) {
+            return false;
+        }
+    }
+    
     return true;
 }
 
-function finishGame() {
-    // Musíme poslat i seznam toho, co jsme vylili do kanálu?
-    // V této logice: Hráč dostane výsledek jen z toho, co je AKTUÁLNĚ v kádince.
-    // Ale z inventáře mu zmizí vše, co proklikal (i ty vylité pokusy).
-    // K tomu bychom potřebovali sledovat 'totalConsumedItems' zvlášť od 'currentBatchIngredients'.
-    
-    // Pro jednoduchost teď posíláme jen to, co tvoří aktuální směs.
-    // Což znamená malý exploit: Hráč může vylít nepovedený pokus a itemy se mu neodečtou (pokud zavře okno).
-    // Oprava: finishGame by měla poslat rozdíl mezi 'initialCount' a 'currentCount'.
-    
-    let consumed = {};
-    inventoryItems.forEach(item => {
-        let diff = (item.initialCount || item.count) - item.currentCount; // item.count je z Lua, item.currentCount se mění
-        if (diff > 0) {
-            consumed[item.id] = diff;
-        }
-    });
+// ============================================================
+// 7. KOMUNIKACE SE SERVEREM
+// ============================================================
 
+function finishGame() {
+    if (isBusy) return;
+    if (isBurnerOn) toggleBurner(); // Vypneme hořák před dokončením
+
+    // Odesíláme všechna data pro finální validaci na serveru
     fetch(`https://${GetParentResourceName()}/finish`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-            r: currentMix.r, g: currentMix.g, b: currentMix.b, ph: currentMix.ph, amount: currentMix.amount,
-            ingredientsUsed: consumed // Posíláme reálně spotřebované kusy
+            beakerIngredients: ingredientsInBeaker, // Pro recept
+            totalConsumed: ingredientsTotalUsed,    // Pro odečet itemů
+            finalTemp: targetTemp,                  // Pro validaci procesu
+            finalTime: currentBoilTime              // Pro validaci procesu
         })
     });
+    
     document.getElementById('game-container').style.display = 'none';
 }
 
 function closeGame() {
+    if (isBusy) return; // Nemůžeme zavřít uprostřed nalévání
+    if (isBurnerOn) toggleBurner();
+
     document.getElementById('game-container').style.display = 'none';
     fetch(`https://${GetParentResourceName()}/close`, {
         method: 'POST',

@@ -9,23 +9,35 @@
 <body>
     <div id="game-container" style="display: none;">
         
-        <!-- LEVÝ SLOUPEC: Inventář / Police -->
-        <div class="shelf-panel">
-            <div class="shelf-header">Suroviny</div>
-            <div id="inventory-list" class="inventory-grid">
-                <!-- Zde se vygenerují ampulky -->
+        <!-- PŘEKRYVNÝ PROGRESS BAR PRO AKCE -->
+        <div id="action-overlay" class="hidden">
+            <div class="action-text">Přidávám ingredienci...</div>
+            <div class="progress-bar-bg">
+                <div id="action-bar" class="progress-bar-fill"></div>
             </div>
         </div>
+<!-- NOVÁ ANIMACE NALÉVÁNÍ -->
+<div id="pouring-scene" class="pouring-scene hidden">
+    <!-- Lahvička, která se bude naklánět -->
+    <img id="pouring-bottle-img" src="" class="pouring-bottle">
+    <!-- Proud tekutiny -->
+    <div id="pouring-stream" class="liquid-stream"></div>
+</div>
+        <!-- LEVÝ SLOUPEC -->
+        <div class="shelf-panel">
+            <div class="shelf-header">Suroviny</div>
+            <div id="inventory-list" class="inventory-grid"></div>
+        </div>
 
-        <!-- PRAVÝ PANEL: Pracovní plocha -->
+        <!-- PRAVÝ PANEL -->
         <div class="workspace-panel">
             <div class="header">
-                <h1>Alchymie</h1>
+                <h1>Alchymistický Stůl</h1>
                 <div class="close-icon" onclick="closeGame()">×</div>
             </div>
 
             <div class="main-content">
-                <!-- Info a Analýza -->
+                <!-- Info -->
                 <div class="info-area">
                     <div class="stats-box">
                         <div class="stat-row">Objem: <span id="current-amt">0</span> ml</div>
@@ -38,18 +50,40 @@
                     </div>
 
                     <div class="actions">
-                        <button class="btn-reset" onclick="resetMix()">Vylít</button>
-                        <button class="btn-finish" onclick="finishGame()">Hotovo</button>
+                        <button class="btn-reset" onclick="resetMix()">Vylít & Reset</button>
+                        <button class="btn-finish" onclick="finishGame()">Dokončit</button>
                     </div>
                 </div>
 
-                <!-- Kádinka -->
-                <div class="beaker-area">
-                    <div class="beaker-wrapper">
-                        <div class="beaker">
-                            <div class="measurements"><span>-</span><span>-</span><span>-</span></div>
-                            <div id="liquid" class="liquid"></div>
-                            <div class="glass-shine"></div>
+                <!-- Kádinka a Ohřev -->
+                <div class="center-area">
+                    <div class="beaker-area">
+                        <div class="beaker-wrapper">
+                            <div class="beaker">
+                                <div class="measurements"><span>-</span><span>-</span><span>-</span></div>
+                                <div id="liquid" class="liquid">
+                                    <div id="bubbles" class="bubbles hidden"></div>
+                                </div>
+                                <div class="glass-shine"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- NOVÝ PANEL OHŘEVU -->
+                    <div class="heater-panel">
+                        <div class="heater-display">
+                            <div class="temp-row">
+                                <label>Teplota:</label>
+                                <input type="range" id="temp-slider" min="0" max="300" value="0" oninput="updateTempDisplay()">
+                                <span id="temp-val">0</span>°C
+                            </div>
+                            <div class="time-row">
+                                <label>Čas varu:</label>
+                                <span id="boil-time" class="digital-time">00:00</span>
+                            </div>
+                        </div>
+                        <div class="heater-controls">
+                            <button id="btn-burner" class="btn-burner" onclick="toggleBurner()">ZAPÁLIT HOŘÁK</button>
                         </div>
                     </div>
                 </div>
