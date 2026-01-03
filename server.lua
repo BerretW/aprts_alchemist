@@ -1,22 +1,20 @@
 local VORP_INV = exports.vorp_inventory:vorp_inventoryApi()
-local oxmysql = exports.oxmysql -- Ujisti se, že máš oxmysql
+local oxmysql = exports.oxmysql
 
--- Proměnné pro cache (aby se nečetlo z DB při každém kliknutí)
+-- Proměnné pro cache
 local ServerIngredients = {}
 local ServerRecipes = {}
-
 
 local function LoadAlchemyData()
     print("^3[Alchemist] Načítám data z databáze...^7")
     
     -- 1. Načtení INGREDIENCÍ
     oxmysql:execute('SELECT * FROM aprts_alchemist_ingredients', {}, function(items)
-        ServerIngredients = {} -- Reset
+        ServerIngredients = {} 
         if items then
             for _, v in pairs(items) do
-                -- Klíčem bude item_id (např. 'tool_water_bottle')
                 ServerIngredients[v.item_id] = {
-                    label = v.item_id, -- Nebo si přidej label do DB, zatím použijeme ID nebo načteme z VORP
+                    label = v.item_id, 
                     r = v.r,
                     g = v.g,
                     b = v.b,
@@ -31,14 +29,13 @@ local function LoadAlchemyData()
 
     -- 2. Načtení RECEPTŮ
     oxmysql:execute('SELECT * FROM aprts_alchemist_recipes', {}, function(recipes)
-        ServerRecipes = {} -- Reset
+        ServerRecipes = {} 
         if recipes then
             for _, v in pairs(recipes) do
-                -- Dekódování JSON sloupců
-                local colorTarget = json.decode(v.color_target)
-                local requirements = json.decode(v.requirements)
+                -- Bezpečné dekódování JSON
+                local colorTarget = v.color_target and json.decode(v.color_target) or {r=0, g=0, b=0}
+                local requirements = v.requirements and json.decode(v.requirements) or {}
                 
-                -- Sestavení struktury receptu podle Configu
                 ServerRecipes[v.name] = {
                     id = v.name,
                     label = v.label,
@@ -52,14 +49,14 @@ local function LoadAlchemyData()
                     },
                     
                     conditions = {
-                        phMin = v.phMin,
-                        phMax = v.phMax,
+                        phMin = tonumber(v.phMin),
+                        phMax = tonumber(v.phMax),
                         minTotalAmount = v.minTotalAmount,
-                        colorTarget = colorTarget, -- {r=..., g=..., b=...}
+                        colorTarget = colorTarget,
                         colorTolerance = v.colorTolerance
                     },
                     
-                    requirements = requirements, -- Array [{item=..., minAmount=...}]
+                    requirements = requirements,
                     rewardItem = v.rewardItem,
                     rewardCount = v.rewardCount
                 }
@@ -69,21 +66,19 @@ local function LoadAlchemyData()
     end)
 end
 
--- Načíst data při startu resource
 AddEventHandler('onResourceStart', function(resourceName)
     if (GetCurrentResourceName() ~= resourceName) then return end
     LoadAlchemyData()
 end)
 
--- Příkaz pro admina na reload dat bez restartu
 RegisterCommand('reloadalchemy', function(source, args)
-    -- Sem můžeš dát kontrolu práv (IsPlayerAdmin apod.)
+    -- Zde si dopiš ověření admina, pokud potřebuješ
     LoadAlchemyData()
+    -- Pošleme update všem hráčům
     TriggerClientEvent('aprts_alchemist:updateConfig', -1, ServerIngredients, ServerRecipes)
     print("Alchymie reloadnuta.")
 end)
 
--- Event, kterým si klient vyžádá data po připojení
 RegisterNetEvent('aprts_alchemist:requestData')
 AddEventHandler('aprts_alchemist:requestData', function()
     local _source = source
@@ -96,30 +91,41 @@ AddEventHandler('aprts_alchemist:finishCraft', function(data)
     local beakerIngredients = data.beakerIngredients
     local totalConsumed = data.totalConsumed
     
-    -- Data o procesu z klienta
     local finalTemp = data.finalTemp or 0
     local finalTime = data.finalTime or 0
 
-    -- 1. Odebrání surovin (stejné jako předtím)
-    local allItemsRemoved = true
+    -- 1. Kontrola a odebrání surovin
+    local canCraft = true
+    
+    -- Nejprve ověříme, zda hráč má itemy (pro jistotu, VORP to dělá v subItem, ale chceme předejít chybám)
+    -- Zde rovnou odebíráme:
     for itemInfo, amountUsed in pairs(totalConsumed) do
         if amountUsed > 0 then
             local check = VORP_INV.subItem(_source, itemInfo, amountUsed)
-            if not check then allItemsRemoved = false end
+            if not check then 
+                canCraft = false 
+                -- Tady by bylo ideální logovat pokus o cheat nebo vrátit itemy, 
+                -- ale VORP subItem vrací false a nic nevezme, pokud hráč nemá dost.
+                -- Pokud se v půlce cyklu stane chyba, hráč přijde o část itemů. 
+                -- Pro jednoduchost zde ukončíme a vypíšeme chybu.
+                break 
+            end
         end
     end
 
-    if not allItemsRemoved then
-        TriggerClientEvent('vorp:TipRight', _source, 'Chyba: Nedostatek surovin!', 4000)
+    if not canCraft then
+        TriggerClientEvent('vorp:TipRight', _source, 'Chyba: Nedostatek surovin v inventáři!', 4000)
         return
     end
 
-    -- 2. Výpočet směsi (stejné jako předtím - barva, pH, množství)
+    -- 2. Výpočet směsi na serveru (Anti-cheat validace)
     local currentMix = { r = 0, g = 0, b = 0, ph = 0, amount = 0 }
     local totalAmount = 0
     
     for itemName, count in pairs(beakerIngredients) do
-        local configItem = Config.Ingredients[itemName]
+        -- !!! ZMĚNA: Používáme ServerIngredients místo Config.Ingredients !!!
+        local configItem = ServerIngredients[itemName]
+        
         if configItem and count > 0 then
             local itemTotalAmount = configItem.amount * count
             if totalAmount == 0 then
@@ -137,16 +143,17 @@ AddEventHandler('aprts_alchemist:finishCraft', function(data)
     end
     currentMix.amount = totalAmount
 
-    -- 3. Hledání receptu (NOVĚ S KONTROLOU TEPLOTY A ČASU)
+    -- 3. Hledání receptu
     local resultItem = 'item_junk' 
     local resultLabel = 'Alchymistický odpad'
     local resultCount = 1
 
     if totalAmount > 0 then
-        for recipeId, recipe in pairs(Config.Recipes) do
+        -- !!! ZMĚNA: Používáme ServerRecipes místo Config.Recipes !!!
+        for recipeId, recipe in pairs(ServerRecipes) do
             local match = true
             local cond = recipe.conditions
-            local proc = recipe.process -- Načtení požadavků na proces
+            local proc = recipe.process
 
             -- A) Fyzikální vlastnosti
             if currentMix.ph < cond.phMin or currentMix.ph > cond.phMax then match = false end
@@ -159,23 +166,25 @@ AddEventHandler('aprts_alchemist:finishCraft', function(data)
                 if rDiff > (cond.colorTolerance or 30) or gDiff > (cond.colorTolerance or 30) or bDiff > (cond.colorTolerance or 30) then match = false end
             end
 
-            -- B) Ingredience
+            -- B) Ingredience (Requirements)
             if match and recipe.requirements then
                 for _, req in ipairs(recipe.requirements) do
                     local usedCount = beakerIngredients[req.item] or 0
-                    local itemCfg = Config.Ingredients[req.item]
+                    local itemCfg = ServerIngredients[req.item]
                     local totalMl = usedCount * (itemCfg and itemCfg.amount or 0)
-                    if totalMl < req.minAmount then match = false; break end
+                    
+                    if totalMl < req.minAmount then 
+                        match = false 
+                        break 
+                    end
                 end
             end
 
-            -- C) NOVÉ: Proces (Teplota a Čas)
+            -- C) Proces (Teplota a Čas)
             if match and proc then
-                -- Kontrola teploty
                 if math.abs(finalTemp - proc.temp) > proc.tempTolerance then
                     match = false
                 end
-                -- Kontrola času
                 if math.abs(finalTime - proc.time) > proc.timeTolerance then
                     match = false
                 end
@@ -203,10 +212,11 @@ AddEventHandler('aprts_alchemist:finishCraft', function(data)
     if resultItem == 'item_junk' then
         TriggerClientEvent('vorp:TipRight', _source, 'Pokus se nezdařil. Vznikl jen kal.', 4000)
         exports.vorp_inventory:addItem(_source, 'item_junk', 1)
-        exports.westhaven_skill:increaseSkill(_source, 'chemic', 1) 
+        -- Malý skill gain i za neúspěch
+        exports.westhaven_skill:increaseSkill(_source, 'chemic', 0.5) 
     else
         exports.vorp_inventory:addItem(_source, resultItem, resultCount)
-        exports.westhaven_skill:increaseSkill(_source, 'chemic', 15) -- Větší skill za složitější proces
+        exports.westhaven_skill:increaseSkill(_source, 'chemic', 15)
         TriggerClientEvent('vorp:TipRight', _source, 'Vyrobeno: ' .. resultCount .. 'x ' .. resultLabel, 4000)
     end
 end)

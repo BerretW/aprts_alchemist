@@ -72,8 +72,5 @@ class ImageLoader:
                 item.setIcon(icon)
         
         worker.finished.connect(on_loaded)
-        # Uložíme referenci na workera do itemu (hack přes setData nebo dynamický atribut není u QListItem safe, 
-        # ale QThread se sám smaže po skončení, pokud není parentován, v PyQt to většinou stačí držet v lokální scope, 
-        # ale tady to riskujeme. Pro stabilitu v produkci by to chtělo silnější manager, ale pro editor stačí:)
         item._img_worker = worker 
         worker.start()
