@@ -2,8 +2,8 @@ DB_CONFIG = {
     "host": "10.42.0.0",
     "port": 3317,
     "user": "westhaven",
-    "password": "Jrqhxi01whCPRISmobYYSWs",
-    "database": "westhaven_dev",
+    "password": "mock",
+    "database": "mock",
     "charset": "utf8mb4",
     "cursorclass": "DictCursor"
 }

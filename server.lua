@@ -213,7 +213,7 @@ AddEventHandler('aprts_alchemist:finishCraft', function(data)
         TriggerClientEvent('vorp:TipRight', _source, 'Pokus se nezdařil. Vznikl jen kal.', 4000)
         exports.vorp_inventory:addItem(_source, 'item_junk', 1)
         -- Malý skill gain i za neúspěch
-        exports.westhaven_skill:increaseSkill(_source, 'chemic', 0.5) 
+        exports.westhaven_skill:increaseSkill(_source, 'chemic', 1) 
     else
         exports.vorp_inventory:addItem(_source, resultItem, resultCount)
         exports.westhaven_skill:increaseSkill(_source, 'chemic', 15)
