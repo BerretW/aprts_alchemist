@@ -1,54 +1,76 @@
+-- Lokální proměnné, které přepíší Config
+local LoadedIngredients = {}
+local LoadedRecipes = {}
+local isDataLoaded = false
+
+-- Vyžádání dat při startu
+CreateThread(function()
+    TriggerServerEvent('aprts_alchemist:requestData')
+end)
+
+-- Příjem dat ze serveru
+RegisterNetEvent('aprts_alchemist:updateConfig')
+AddEventHandler('aprts_alchemist:updateConfig', function(servIngredients, servRecipes)
+    LoadedIngredients = servIngredients
+    LoadedRecipes = servRecipes
+    isDataLoaded = true
+    print("Alchymistická data synchronizována z DB.")
+end)
+
 RegisterCommand('startchem', function()
+    if not isDataLoaded then
+        print("Chyba: Data z databáze se ještě nenačetla. Zkus to za chvíli.")
+        TriggerServerEvent('aprts_alchemist:requestData') -- Zkusíme znovu
+        return
+    end
+
     local playerSkill = Config.GetPlayerSkill()
-    print("Otevírám alchymistickou minihru. Skill level: " .. playerSkill)
     
-    -- 1. Získání inventáře (VORP)
-    -- Ujisti se, že export funguje, jinak použij TriggerServerEvent callback
+    -- Získání inventáře z VORP
     local inventory = exports.vorp_inventory:getInventoryItems()
     
     if not inventory then 
-        print("Chyba: Nepodařilo se načíst inventář nebo je prázdný.") 
-        -- Pro testování bez itemů můžeš odkomentovat return, 
-        -- ale v produkci musíš mít itemy.
-        -- return 
-        inventory = {} -- Fallback aby script nespadl
+        inventory = {} 
     end
 
-    -- 2. Filtrace a příprava dat pro UI
+    -- Filtrace a příprava dat pro UI
     local validIngredients = {}
 
     for _, item in pairs(inventory) do
-        local configData = Config.Ingredients[item.name]
-        if configData then
+        -- TADY JE ZMĚNA: Hledáme v LoadedIngredients (z DB) místo Config.Ingredients
+        local dbData = LoadedIngredients[item.name]
+
+        if dbData then
             table.insert(validIngredients, {
                 id = item.name,
-                label = item.label,
+                label = item.label, -- Použijeme label z inventáře (je přesnější než DB)
                 count = item.count,
                 
-                -- Vlastnosti
-                type = configData.type,
-                r = configData.r, g = configData.g, b = configData.b,
-                ph = configData.ph,
-                amount = configData.amount
+                type = dbData.type,
+                r = dbData.r, 
+                g = dbData.g, 
+                b = dbData.b,
+                ph = dbData.ph,
+                amount = dbData.amount
             })
         end
     end
 
-    -- 3. Příprava receptů
+    -- Příprava receptů
     local recipesForUI = {}
-    for k, v in pairs(Config.Recipes) do
+    -- TADY JE ZMĚNA: Iterujeme LoadedRecipes (z DB)
+    for k, v in pairs(LoadedRecipes) do
         table.insert(recipesForUI, {
-            id = k, -- ID receptu
+            id = v.id,
             label = v.label,
             minSkill = v.minSkillToIdentify,
             conditions = v.conditions,
             requirements = v.requirements,
-            process = v.process
+            process = v.process 
         })
     end
 
-    -- 4. Otevření UI
-SetNuiFocus(true, true)
+    SetNuiFocus(true, true)
     SendNUIMessage({
         type = "OPEN_GAME",
         inputs = validIngredients,

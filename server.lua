@@ -1,4 +1,94 @@
 local VORP_INV = exports.vorp_inventory:vorp_inventoryApi()
+local oxmysql = exports.oxmysql -- Ujisti se, že máš oxmysql
+
+-- Proměnné pro cache (aby se nečetlo z DB při každém kliknutí)
+local ServerIngredients = {}
+local ServerRecipes = {}
+
+
+local function LoadAlchemyData()
+    print("^3[Alchemist] Načítám data z databáze...^7")
+    
+    -- 1. Načtení INGREDIENCÍ
+    oxmysql:execute('SELECT * FROM aprts_alchemist_ingredients', {}, function(items)
+        ServerIngredients = {} -- Reset
+        if items then
+            for _, v in pairs(items) do
+                -- Klíčem bude item_id (např. 'tool_water_bottle')
+                ServerIngredients[v.item_id] = {
+                    label = v.item_id, -- Nebo si přidej label do DB, zatím použijeme ID nebo načteme z VORP
+                    r = v.r,
+                    g = v.g,
+                    b = v.b,
+                    ph = tonumber(v.ph),
+                    amount = v.amount,
+                    type = v.type
+                }
+            end
+            print("^2[Alchemist] Načteno " .. #items .. " ingrediencí.^7")
+        end
+    end)
+
+    -- 2. Načtení RECEPTŮ
+    oxmysql:execute('SELECT * FROM aprts_alchemist_recipes', {}, function(recipes)
+        ServerRecipes = {} -- Reset
+        if recipes then
+            for _, v in pairs(recipes) do
+                -- Dekódování JSON sloupců
+                local colorTarget = json.decode(v.color_target)
+                local requirements = json.decode(v.requirements)
+                
+                -- Sestavení struktury receptu podle Configu
+                ServerRecipes[v.name] = {
+                    id = v.name,
+                    label = v.label,
+                    minSkillToIdentify = v.minSkillToIdentify,
+                    
+                    process = {
+                        temp = v.process_temp,
+                        time = v.process_time,
+                        tempTolerance = v.process_tempTolerance,
+                        timeTolerance = v.process_timeTolerance
+                    },
+                    
+                    conditions = {
+                        phMin = v.phMin,
+                        phMax = v.phMax,
+                        minTotalAmount = v.minTotalAmount,
+                        colorTarget = colorTarget, -- {r=..., g=..., b=...}
+                        colorTolerance = v.colorTolerance
+                    },
+                    
+                    requirements = requirements, -- Array [{item=..., minAmount=...}]
+                    rewardItem = v.rewardItem,
+                    rewardCount = v.rewardCount
+                }
+            end
+            print("^2[Alchemist] Načteno " .. #recipes .. " receptů.^7")
+        end
+    end)
+end
+
+-- Načíst data při startu resource
+AddEventHandler('onResourceStart', function(resourceName)
+    if (GetCurrentResourceName() ~= resourceName) then return end
+    LoadAlchemyData()
+end)
+
+-- Příkaz pro admina na reload dat bez restartu
+RegisterCommand('reloadalchemy', function(source, args)
+    -- Sem můžeš dát kontrolu práv (IsPlayerAdmin apod.)
+    LoadAlchemyData()
+    TriggerClientEvent('aprts_alchemist:updateConfig', -1, ServerIngredients, ServerRecipes)
+    print("Alchymie reloadnuta.")
+end)
+
+-- Event, kterým si klient vyžádá data po připojení
+RegisterNetEvent('aprts_alchemist:requestData')
+AddEventHandler('aprts_alchemist:requestData', function()
+    local _source = source
+    TriggerClientEvent('aprts_alchemist:updateConfig', _source, ServerIngredients, ServerRecipes)
+end)
 
 RegisterNetEvent('aprts_alchemist:finishCraft')
 AddEventHandler('aprts_alchemist:finishCraft', function(data)
