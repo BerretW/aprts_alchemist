@@ -63,7 +63,7 @@ class IngredientsWidget(QWidget):
         self.inp_id.setStyleSheet("background-color: #444; color: #aaa;")
         
         self.inp_amount = QSpinBox()
-        self.inp_amount.setRange(1, 255)
+        self.inp_amount.setRange(10, 300)
         self.inp_amount.setSuffix(" ml")
         
         self.inp_ph = QDoubleSpinBox()

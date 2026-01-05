@@ -22,7 +22,7 @@ let targetTemp = 0;          // Nastavená teplota
 let currentBoilTime = 0;     // Doba varu v sekundách
 let boilInterval = null;     // Timer pro var
 
-const MAX_BEAKER_VOLUME = 250;
+const MAX_BEAKER_VOLUME = 500;
 
 // ============================================================
 // 1. INICIALIZACE A EVENTY
